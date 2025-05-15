@@ -13,6 +13,8 @@
 </template>
 
 <script>
+import { CATEGORY_ICONS } from '../utils/constants';
+
 export default {
   name: 'TaskIcon',
   props: {
@@ -22,7 +24,11 @@ export default {
     },
     category: {
       type: String,
-      default: 'cleaning'
+      default: 'cleaning',
+      validator: (value) => [
+        'cleaning', 'cooking', 'maintenance', 'outdoor', 
+        'shopping', 'laundry', 'dishes', 'pets', 'childcare'
+      ].includes(value)
     },
     size: {
       type: String,
@@ -36,19 +42,7 @@ export default {
   },
   setup() {
     const getCategoryIcon = (category) => {
-      const icons = {
-        cleaning: 'cleaning_services',
-        cooking: 'restaurant',
-        maintenance: 'build',
-        outdoor: 'grass',
-        shopping: 'shopping_cart',
-        laundry: 'local_laundry_service',
-        dishes: 'wash',
-        pets: 'pets',
-        childcare: 'child_care'
-      };
-      
-      return icons[category] || 'task_alt';
+      return CATEGORY_ICONS[category] || 'task_alt';
     };
     
     return {

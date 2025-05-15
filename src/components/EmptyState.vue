@@ -1,7 +1,17 @@
 <template>
   <div class="empty-state">
-    <i v-if="icon" class="material-icons empty-icon">{{ icon }}</i>
-    <slot>No data available</slot>
+    <div v-if="icon" class="empty-icon">
+      <i class="material-icons">{{ icon }}</i>
+    </div>
+    <div class="empty-content">
+      <h3 v-if="title" class="empty-title">{{ title }}</h3>
+      <slot>
+        <p>No data available</p>
+      </slot>
+    </div>
+    <div v-if="$slots.action" class="empty-action">
+      <slot name="action"></slot>
+    </div>
   </div>
 </template>
 
@@ -11,7 +21,11 @@ export default {
   props: {
     icon: {
       type: String,
-      default: null
+      default: 'sentiment_dissatisfied'
+    },
+    title: {
+      type: String,
+      default: ''
     }
   }
 }
@@ -19,17 +33,35 @@ export default {
 
 <style scoped>
 .empty-state {
-  padding: var(--spacing-large);
-  background-color: var(--color-gray-vlight);
-  border-radius: var(--border-radius-medium);
-  color: var(--color-gray-dark);
-  text-align: center);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--spacing-xlarge) var(--spacing-medium);
+  text-align: center;
 }
 
 .empty-icon {
-  font-size: 2rem;
-  color: var(--color-gray-medium);
-  display: block;
-  margin-bottom: var(--spacing-medium);
+  font-size: 64px;
+  color: var(--color-gray-light);
+  margin-top: var(--spacing-medium);
+}
+
+.empty-icon i {
+  font-size: 56px;
+}
+
+.empty-title {
+  color: var(--color-secondary);
+  margin-top: 0;
+  margin-bottom: var(--spacing-small);
+}
+
+.empty-content {
+  max-width: 400px;
+  color: var(--color-gray-dark);
+}
+
+.empty-action {
+  margin-top: var(--spacing-large);
 }
 </style>

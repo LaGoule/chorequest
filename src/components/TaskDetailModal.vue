@@ -1,188 +1,209 @@
 <template>
-  <div v-if="modelValue" class="modal-overlay" @click.self="close">
-    <div class="modal-container">
-      <div class="modal-header">
-        <h3>
-          <i class="material-icons">{{ isEditing ? 'edit' : 'task_alt' }}</i>
-          {{ isEditing ? 'Edit Task' : 'Task Details' }}
-        </h3>
-        <button class="close-button" @click="close">
-          <i class="material-icons">close</i>
-        </button>
+  <AppModal
+    v-model="isOpen"
+    title="Task Details"
+    :icon="isEditing ? 'edit' : 'task_alt'"
+    size="medium"
+    @close="close"
+  >
+    <!-- View Mode -->
+    <div v-if="!isEditing" class="task-details-view">
+      <div class="task-header">
+        <div class="task-title">
+          <TaskIcon 
+            :icon="task.icon" 
+            :category="task.category" 
+            size="large"
+            with-background
+          />
+          <h2>{{ task.name }}</h2>
+        </div>
+        <PointsBadge 
+          :value="task.pointsValue" 
+          :show-plus="!!task.completedBy" 
+          size="large"
+        />
       </div>
       
-      <div class="modal-content">
-        <!-- View Mode -->
-        <div v-if="!isEditing" class="task-details-view">
-          <div class="task-header">
-            <div class="task-title">
-              <TaskIcon 
-                :icon="task.icon" 
-                :category="task.category" 
-                size="large"
-                with-background
-              />
-              <h2>{{ task.name }}</h2>
-            </div>
-            <PointsBadge 
-              :value="task.pointsValue" 
-              :show-plus="!!task.completedBy" 
-              size="large"
-            />
-          </div>
-          
-          <div class="task-tags">
-            <TagBadge 
-              :category="task.category" 
-              :text="formatCategory(task.category)" 
-              size="medium"
-            />
-            <!-- Emplacement futur pour des tags supplémentaires -->
-          </div>
-          
-          <div v-if="task.description" class="task-description">
-            {{ task.description }}
-          </div>
-          
-          <div class="task-meta">
-            <span class="task-created">
-              Created {{ formatDate(task.createdAt) }}
-            </span>
-          </div>
-          
-          <div v-if="task.completedBy" class="task-completion">
-            <i class="material-icons completion-icon">check_circle</i>
-            <span>Completed by {{ getCompletedByName(task.completedBy) }}</span>
-            <span class="completion-date">{{ formatDate(task.completedAt) }}</span>
-          </div>
-        </div>
-        
-        <!-- Edit Mode -->
-        <form v-else class="task-edit-form" @submit.prevent="saveTask">
-          <div class="form-group">
-            <label for="taskName">Task Name</label>
-            <input type="text" id="taskName" v-model="editedTask.name" required />
-          </div>
-          
-          <div class="form-group">
-            <label for="taskIcon">Task Icon</label>
-            <IconSelector 
-              v-model="editedTask.icon" 
-              :category="editedTask.category" 
-              input-id="edit-task-icon" 
-            />
-          </div>
-          
-          <div class="form-group">
-            <label for="taskDescription">Description</label>
-            <textarea id="taskDescription" v-model="editedTask.description" rows="3"></textarea>
-          </div>
-          
-          <div class="form-group">
-            <label for="taskCategory">Category</label>
-            <select id="taskCategory" v-model="editedTask.category" required>
-              <option value="cleaning">Cleaning</option>
-              <option value="cooking">Cooking</option>
-              <option value="maintenance">Maintenance</option>
-              <option value="outdoor">Outdoor</option>
-              <option value="shopping">Shopping</option>
-              <option value="laundry">Laundry</option>
-              <option value="dishes">Dishes</option>
-              <option value="pets">Pets</option>
-              <option value="childcare">Childcare</option>
-            </select>
-          </div>
-          
-          <div class="form-group">
-            <label for="taskPoints">Points Value</label>
-            <input type="number" id="taskPoints" v-model.number="editedTask.pointsValue" min="1" max="10" required />
-          </div>
-        </form>
+      <div class="task-tags">
+        <TagBadge 
+          :category="task.category" 
+          :text="formatCategory(task.category)" 
+          size="medium"
+        />
       </div>
       
-      <div class="modal-actions">
-        <div v-if="!isEditing">
-          
-          <button 
-            v-if="!task.completedBy" 
-            class="complete-button"
-            @click="completeTask"
-            :disabled="completing"
-          >
-            <i class="material-icons">check_circle</i>
-            {{ completing ? 'Completing...' : 'Complete Task' }}
-          </button>
-          
-          <button v-if="canEdit" class="edit-button" @click="startEditing">
-            <i class="material-icons">edit</i>
-            Edit
-          </button>
-          
-          <button v-if="canDelete" class="delete-button" @click="confirmDelete">
-            <i class="material-icons">delete</i>
-            Delete
-          </button>
-        </div>
-        
-        <div v-else>
-          <button class="cancel-button" @click="cancelEdit">
-            <i class="material-icons">close</i>
-            Cancel
-          </button>
-          <button class="save-button" @click="saveTask" :disabled="saving">
-            <i class="material-icons">save</i>
-            {{ saving ? 'Saving...' : 'Save Changes' }}
-          </button>
-        </div>
+      <div v-if="task.description" class="task-description">
+        {{ task.description }}
+      </div>
+      
+      <div class="task-meta">
+        <span class="task-created">
+          Created {{ formatDate(task.createdAt) }}
+        </span>
+      </div>
+      
+      <div v-if="task.completedBy" class="task-completion">
+        <i class="material-icons completion-icon">check_circle</i>
+        <span>Completed by {{ getCompletedByName(task.completedBy) }}</span>
+        <span class="completion-date">{{ formatDate(task.completedAt) }}</span>
       </div>
     </div>
-  </div>
+    
+    <!-- Edit Mode -->
+    <AppForm 
+      v-else 
+      class="task-edit-form" 
+      @submit="saveTask"
+      :loading="saving"
+    >
+      <AppInput
+        v-model="editedTask.name"
+        label="Task Name"
+        required
+      />
+      
+      <AppInput
+        v-model="editedTask.description"
+        label="Description"
+        type="textarea"
+        rows="3"
+      />
+      
+      <AppSelect
+        v-model="editedTask.category"
+        label="Category"
+        required
+        :options="categoryOptions"
+      />
+      
+      <AppInput
+        v-model.number="editedTask.pointsValue"
+        label="Points Value"
+        type="number"
+        min="1"
+        max="10"
+        required
+      />
+      
+      <div class="form-group">
+        <label>Task Icon</label>
+        <IconSelector 
+          v-model="editedTask.icon" 
+          :category="editedTask.category" 
+          input-id="edit-task-icon" 
+        />
+      </div>
+    </AppForm>
+    
+    <template v-slot:footer>
+      <div v-if="!isEditing">
+        <!-- Delete button -->
+        <AppButton
+          v-if="canDelete"
+          variant="danger"
+          icon="delete"
+          label="Delete Task"
+          @click="confirmDelete"
+        />
+        
+        <div class="actions-spacer"></div>
+        
+        <!-- Complete button -->
+        <AppButton
+          v-if="!task.completedBy"
+          variant="success"
+          icon="check_circle"
+          :label="completing ? 'Completing...' : 'Complete Task'"
+          :loading="completing"
+          :disabled="completing"
+          @click="completeTask"
+        />
+        
+        <!-- Edit button -->
+        <AppButton
+          v-if="canEdit"
+          variant="secondary"
+          icon="edit"
+          label="Edit Task"
+          @click="startEditing"
+        />
+      </div>
+      
+      <div v-else>
+        <AppButton
+          variant="outline"
+          label="Cancel"
+          @click="cancelEdit"
+        />
+        
+        <AppButton
+          variant="primary"
+          icon="save"
+          :label="saving ? 'Saving...' : 'Save Changes'"
+          :loading="saving"
+          :disabled="saving"
+          type="submit"
+          @click="saveTask"
+        />
+      </div>
+    </template>
+  </AppModal>
   
   <!-- Confirmation modal for task deletion -->
-  <div v-if="showDeleteConfirm" class="modal-overlay">
-    <div class="confirm-modal">
-      <h3>
-        <i class="material-icons warning-icon">warning</i>
-        Delete Task
-      </h3>
-      
-      <p>Are you sure you want to delete this task?</p>
-      
-      <div v-if="task.completedBy" class="warning-message">
-        <p><strong>Warning:</strong> This task has already been completed and has awarded points to a household member.</p>
-        <p>Deleting this task will not revoke the points that were awarded.</p>
-      </div>
-      
-      <div class="confirm-actions">
-        <button class="cancel-button" @click="showDeleteConfirm = false">
-          <i class="material-icons">close</i>
-          Cancel
-        </button>
-        <button class="delete-confirm-button" @click="deleteTask" :disabled="deleting">
-          <i class="material-icons">{{ deleting ? 'hourglass_empty' : 'delete_forever' }}</i>
-          {{ deleting ? 'Deleting...' : 'Delete Permanently' }}
-        </button>
-      </div>
+  <ConfirmModal
+    v-model="showDeleteConfirm"
+    title="Delete Task"
+    confirmText="Delete Permanently"
+    :loading="deleting"
+    loadingText="Deleting..."
+    warning="This action cannot be undone."
+    danger
+    icon="warning"
+    @confirm="deleteTask"
+  >
+    <p>Are you sure you want to delete this task?</p>
+    
+    <div v-if="task.completedBy" class="warning-message">
+      <p><strong>Warning:</strong> This task has already been completed and has awarded points to a household member.</p>
+      <p>Deleting this task will not revoke the points that were awarded.</p>
     </div>
-  </div>
+  </ConfirmModal>
 </template>
 
 <script>
 import { ref, computed, watch } from 'vue';
 import { auth, db } from '../firebase';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import IconSelector from './IconSelector.vue';
+
+// Components
 import TaskIcon from './TaskIcon.vue';
 import PointsBadge from './PointsBadge.vue';
 import TagBadge from './TagBadge.vue';
+import IconSelector from './IconSelector.vue';
+import ConfirmModal from './ConfirmModal.vue';
+import AppModal from './ui/AppModal.vue';
+import AppForm from './ui/AppForm.vue';
+import AppInput from './ui/AppInput.vue';
+import AppSelect from './ui/AppSelect.vue';
+import AppButton from './ui/AppButton.vue';
+
+// Services
+import { notificationService } from '../services/notificationService';
 
 export default {
   name: 'TaskDetailModal',
   components: {
-    IconSelector,
     TaskIcon,
     PointsBadge,
-    TagBadge
+    TagBadge,
+    IconSelector,
+    ConfirmModal,
+    AppModal,
+    AppForm,
+    AppInput,
+    AppSelect,
+    AppButton
   },
   props: {
     modelValue: {
@@ -192,10 +213,19 @@ export default {
     task: {
       type: Object,
       required: true
+    },
+    isAdmin: {
+      type: Boolean,
+      default: false
     }
   },
   emits: ['update:modelValue', 'task-updated', 'task-completed', 'task-deleted'],
   setup(props, { emit }) {
+    const isOpen = computed({
+      get: () => props.modelValue,
+      set: (value) => emit('update:modelValue', value)
+    });
+    
     const isEditing = ref(false);
     const editedTask = ref({});
     const saving = ref(false);
@@ -203,16 +233,29 @@ export default {
     const showDeleteConfirm = ref(false);
     const deleting = ref(false);
     
+    // Category options for the select
+    const categoryOptions = [
+      { value: 'cleaning', label: 'Cleaning' },
+      { value: 'cooking', label: 'Cooking' },
+      { value: 'maintenance', label: 'Maintenance' },
+      { value: 'outdoor', label: 'Outdoor' },
+      { value: 'shopping', label: 'Shopping' },
+      { value: 'laundry', label: 'Laundry' },
+      { value: 'dishes', label: 'Dishes' },
+      { value: 'pets', label: 'Pets' },
+      { value: 'childcare', label: 'Childcare' }
+    ];
+    
     // Clone the task for editing
     watch(() => props.task, (newTask) => {
       editedTask.value = { ...newTask };
     }, { immediate: true });
     
+    // Permission checks
     const canEdit = computed(() => {
       return !props.task.completedBy && (props.task.createdBy === auth.currentUser.uid);
     });
     
-    // Autoriser la suppression pour le créateur et l'admin
     const canDelete = computed(() => {
       // Vérifier si l'utilisateur est le créateur ou l'admin du foyer
       return props.task.createdBy === auth.currentUser.uid || props.isAdmin;
@@ -247,7 +290,7 @@ export default {
           description: editedTask.value.description,
           category: editedTask.value.category,
           pointsValue: editedTask.value.pointsValue,
-          icon: editedTask.value.icon // Ajout de l'icône
+          icon: editedTask.value.icon
         };
         
         await updateDoc(taskRef, updates);
@@ -256,7 +299,9 @@ export default {
         emit('task-updated', { id: props.task.id, ...updates });
         
         isEditing.value = false;
+        notificationService.success('Task updated successfully');
       } catch (error) {
+        notificationService.error('Failed to update task: ' + error.message);
         console.error('Error updating task:', error);
       } finally {
         saving.value = false;
@@ -363,6 +408,7 @@ export default {
     };
     
     return {
+      isOpen,
       isEditing,
       editedTask,
       saving,
@@ -371,6 +417,7 @@ export default {
       deleting,
       canEdit,
       canDelete,
+      categoryOptions,
       close,
       startEditing,
       cancelEdit,
@@ -390,56 +437,6 @@ export default {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 100;
-}
-
-.modal-container {
-  background-color: white;
-  border-radius: var(--border-radius-medium);
-  width: 90%;
-  max-width: 500px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: var(--shadow-large);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--spacing-medium);
-  border-bottom: 1px solid var(--color--gray-light);
-}
-
-.modal-header h3 {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-small);
-}
-
-.close-button {
-  background: none;
-  border: none;
-  padding: var(--spacing-vsmall);
-  cursor: pointer;
-  color: var(--color-gray-medium);
-}
-
-.modal-content {
-  padding: var(--spacing-medium);
-}
-
 .task-details-view {
   text-align: left;
 }
@@ -491,7 +488,7 @@ export default {
 .task-completion {
   margin-top: var(--spacing-medium);
   padding-top: var(--spacing-medium);
-  border-top: 1px solid var(--color--gray-light);
+  border-top: 1px solid var(--color-gray-light);
   color: var(--color-success);
   display: flex;
   align-items: center;
@@ -512,95 +509,8 @@ export default {
   text-align: left;
 }
 
-.modal-actions>div {
-  display: flex;
-  flex-direction: row-reverse;
-  justify-content: center;
-  padding: var(--spacing-medium);
-  border-top: 1px solid var(--color--gray-light);
-  gap: var(--spacing-small);
-}
-
-.action-spacer {
+.actions-spacer {
   flex-grow: 1;
-}
-
-.complete-button {
-  background-color: var(--color-success);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-vsmall);
-}
-
-.edit-button {
-  background-color: var(--color-secondary-light);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-vsmall);
-}
-
-.delete-button {
-  background-color: var(--color-error);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-vsmall);
-}
-
-.cancel-button {
-  background-color: var(--color-gray-medium);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-vsmall);
-}
-
-.save-button {
-  background-color: var(--color-primary);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-vsmall);
-}
-
-.form-group {
-  margin-bottom: var(--spacing-medium);
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: var(--spacing-vsmall);
-  font-weight: var(--font-weight-semibold);
-}
-
-.form-group input,
-.form-group select,
-.form-group textarea {
-  width: calc(100% - var(--spacing-medium));
-  padding: var(--spacing-small);
-  border: 1px solid var(--color--gray-light);
-  border-radius: var(--border-radius-small);
-}
-.form-group select{
-    width: 100%;
-}
-
-.confirm-modal {
-  background-color: white;
-  border-radius: var(--border-radius-medium);
-  padding: var(--spacing-large);
-  width: 90%;
-  max-width: 400px;
-  box-shadow: var(--shadow-large);
-}
-
-.confirm-modal h3 {
-  margin-top: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-small);
-  color: var(--color-error);
-}
-
-.warning-icon {
-  color: var(--color-error);
 }
 
 .warning-message {
@@ -614,20 +524,6 @@ export default {
 .warning-message p {
   margin: var(--spacing-vsmall) 0;
   font-size: var(--font-size-small);
-}
-
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-small);
-  margin-top: var(--spacing-large);
-}
-
-.delete-confirm-button {
-  background-color: var(--color-error);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-vsmall);
 }
 
 .task-title {
@@ -692,7 +588,7 @@ export default {
   align-items: center;
   justify-content: center;
   padding: var(--spacing-small);
-  border: 1px solid var(--color--gray-light);
+  border: 1px solid var(--color-gray-light);
   border-radius: var(--border-radius-small);
   cursor: pointer;
   transition: all var(--transition-fast);

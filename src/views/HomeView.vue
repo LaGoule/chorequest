@@ -1,7 +1,7 @@
 <template>
   <div class="home">
-    <h4>Welcome to ChoreQuest, {{ userProfile?.name }}!</h4>
-    
+    <h1>Welcome to ChoreQuest, {{ userProfile?.name ? userProfile.name : 'Guest' }}!</h1>
+
     <div v-if="household" class="household-info">
       <HouseholdCard :name="household.name" :points="userProfile?.points || 0">
         <!-- Contenu supplémentaire peut être ajouté ici avec le slot -->

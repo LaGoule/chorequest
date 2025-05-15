@@ -2,7 +2,7 @@
   <div class="login">
     <h1>Login to ChoreQuest</h1>
     
-    <form @submit.prevent="login">
+    <form @submit.prevent="handleSubmit">
       <div class="form-group">
         <label for="email">Email</label>
         <input type="email" id="email" v-model="email" required />
@@ -13,9 +13,15 @@
         <input type="password" id="password" v-model="password" required />
       </div>
       
+      <div v-if="isSignUp" class="form-group">
+        <label for="name">Name</label>
+        <input type="text" id="name" v-model="name" required />
+      </div>
+      
       <div class="form-actions">
-        <button type="submit" :disabled="loading">{{ loading ? 'Logging in...' : 'Login' }}</button>
-        <p>Don't have an account? <router-link to="/register">Register</router-link></p>
+        <button type="submit" :disabled="loading">{{ loading ? 'Logging in...' : (isSignUp ? 'Sign Up' : 'Login') }}</button>
+        <p v-if="!isSignUp">Don't have an account? <a href="#" @click.prevent="toggleMode">Register</a></p>
+        <p v-else>Already have an account? <a href="#" @click.prevent="toggleMode">Login</a></p>
       </div>
       
       <div v-if="error" class="error">
@@ -28,39 +34,73 @@
 <script>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { auth } from '../firebase'
-import { signInWithEmailAndPassword } from 'firebase/auth'
+import { useStore } from 'vuex'
 
 export default {
   name: 'LoginView',
+  
   setup() {
-    const router = useRouter()
-    const email = ref('')
-    const password = ref('')
-    const error = ref(null)
-    const loading = ref(false)
+    const store = useStore();
+    const router = useRouter();
     
-    const login = async () => {
-      loading.value = true
-      error.value = null
+    // Form state
+    const email = ref('');
+    const password = ref('');
+    const name = ref('');  // Pour l'inscription
+    const isSignUp = ref(false);
+    const loading = ref(false);
+    const error = ref('');
+    
+    const toggleMode = () => {
+      isSignUp.value = !isSignUp.value;
+      error.value = '';
+    };
+    
+    const handleSubmit = async () => {
+      if (!email.value || !password.value || (isSignUp.value && !name.value)) {
+        error.value = 'Please fill in all fields';
+        return;
+      }
+      
+      loading.value = true;
+      error.value = '';
       
       try {
-        await signInWithEmailAndPassword(auth, email.value, password.value)
-        router.push('/')
+        if (isSignUp.value) {
+          // Signup logic
+          await store.dispatch('signup', {
+            email: email.value,
+            password: password.value,
+            name: name.value
+          });
+        } else {
+          // Login logic
+          await store.dispatch('login', {
+            email: email.value,
+            password: password.value
+          });
+        }
+        
+        // Rediriger vers la page d'accueil après authentification
+        router.push('/');
       } catch (err) {
-        error.value = err.message
+        console.error('Authentication error:', err);
+        error.value = err.message || 'An error occurred during authentication';
       } finally {
-        loading.value = false
+        loading.value = false;
       }
-    }
+    };
     
     return {
       email,
       password,
-      error,
+      name,
+      isSignUp,
       loading,
-      login
-    }
+      error,
+      toggleMode,
+      handleSubmit
+    };
   }
 }
 </script>

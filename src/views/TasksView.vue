@@ -9,15 +9,40 @@
       />
       
       <div class="user-actions">
-        <button @click="showAddTaskForm = !showAddTaskForm">
-          <i class="material-icons">{{ showAddTaskForm ? 'cancel' : 'add_circle' }}</i>
-          {{ showAddTaskForm ? 'Cancel' : 'Add New Task' }}
+        <button @click="showAddTaskModal = true">
+          <i class="material-icons">add_circle</i>
+          Add New Task
         </button>
       </div>
       
-      <div v-if="showAddTaskForm" class="add-task-form">
-        <SectionHeader title="Add New Task" icon="add_task" />
-        <form @submit.prevent="addTask">
+      <EmptyState 
+        v-if="filteredTasks.length === 0"
+        icon="search_off"
+      >
+        <p>No tasks found.</p>
+      </EmptyState>
+      
+      <div v-else class="task-grid">
+        <TaskCard
+          v-for="task in sortedTasks"
+          :key="task.id"
+          :task="task"
+          :completing="completingTaskId === task.id"
+          :show-complete-button="!task.completedBy"
+          :show-details-button="true"
+          @complete="completeTask"
+          @view-details="openTaskDetails"
+        />
+      </div>
+      
+      <!-- Modal pour ajouter une tâche -->
+      <AppModal
+        v-model="showAddTaskModal"
+        title="Add New Task"
+        icon="add_task"
+        size="medium"
+      >
+        <form @submit.prevent="handleAddTask">
           <div class="form-group">
             <label for="taskName">Task Name</label>
             <input type="text" id="taskName" v-model="newTask.name" required />
@@ -57,32 +82,57 @@
             <input type="number" id="taskPoints" v-model.number="newTask.pointsValue" min="1" max="10" required />
           </div>
           
-          <button type="submit" :disabled="addingTask">
-            <i class="material-icons">add</i>
-            {{ addingTask ? 'Adding...' : 'Add Task' }}
-          </button>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" @click="showAddTaskModal = false">Cancel</button>
+            <button type="submit" class="btn-primary" :disabled="addingTask">
+              <span v-if="addingTask">Adding...</span>
+              <span v-else>Add Task</span>
+            </button>
+          </div>
         </form>
-      </div>
+      </AppModal>
       
-      <EmptyState 
-        v-if="filteredTasks.length === 0"
-        icon="search_off"
+      <!-- Modal pour afficher les détails de la tâche -->
+      <AppModal
+        v-model="showTaskDetails"
+        :title="selectedTask.name || 'Task Details'"
+        :icon="selectedTask.icon || getCategoryIcon(selectedTask.category)"
+        size="medium"
       >
-        <p>No tasks found.</p>
-      </EmptyState>
-      
-      <div v-else class="task-grid">
-        <TaskCard
-          v-for="task in sortedTasks"
-          :key="task.id"
-          :task="task"
-          :completing="completingTask === task.id"
-          :show-complete-button="!task.completedBy"
-          :show-details-button="true"
-          @complete="completeTask"
-          @view-details="openTaskDetails"
-        />
-      </div>
+        <div class="task-details">
+          <p v-if="selectedTask.description" class="task-description">{{ selectedTask.description }}</p>
+          <div class="task-meta">
+            <div class="task-meta-item">
+              <span class="label">Category:</span>
+              <span>{{ selectedTask.category }}</span>
+            </div>
+            <div class="task-meta-item">
+              <span class="label">Points:</span>
+              <span>{{ selectedTask.pointsValue || 0 }}</span>
+            </div>
+            <div v-if="selectedTask.completedBy" class="task-meta-item">
+              <span class="label">Completed by:</span>
+              <span>{{ getCompletedByName(selectedTask.completedBy) }}</span>
+            </div>
+            <div v-if="selectedTask.completedAt" class="task-meta-item">
+              <span class="label">Completed on:</span>
+              <span>{{ formatDate(selectedTask.completedAt) }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <template #footer>
+          <button 
+            v-if="!selectedTask.completedBy" 
+            class="btn-primary" 
+            @click="completeTask(selectedTask.id)"
+            :disabled="completingTaskId === selectedTask.id"
+          >
+            <span v-if="completingTaskId === selectedTask.id">Completing...</span>
+            <span v-else>Complete Task</span>
+          </button>
+        </template>
+      </AppModal>
     </div>
     
     <div v-else class="no-household">
@@ -91,30 +141,23 @@
       </EmptyState>
       <router-link to="/household" class="btn">Join or Create Household</router-link>
     </div>
-    
-    <TaskDetailModal
-      v-model="showTaskDetails"
-      :task="selectedTask"
-      :isAdmin="isAdmin"
-      @task-updated="onTaskUpdated"
-      @task-completed="completeTask"
-      @task-deleted="onTaskDeleted"
-    />
   </div>
 </template>
 
 <script>
-import { computed, onMounted, ref, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
-import { db, auth } from '../firebase';
+import { useRouter } from 'vue-router';
+import { auth } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { useRoute, useRouter } from 'vue-router';
+import { db } from '../firebase';
+import { authService } from '../services/authService';
+import { notificationService } from '../services/notificationService';
+import AppModal from '../components/ui/AppModal.vue';
 
 import TaskCard from '../components/TaskCard.vue';
 import TaskFilters from '../components/TaskFilters.vue';
-import TaskDetailModal from '../components/TaskDetailModal.vue';
 import EmptyState from '../components/EmptyState.vue';
-import SectionHeader from '../components/SectionHeader.vue';
 import IconSelector from '../components/IconSelector.vue';
 
 export default {
@@ -122,28 +165,26 @@ export default {
   components: {
     TaskCard,
     TaskFilters,
-    TaskDetailModal,
     EmptyState,
-    SectionHeader,
-    IconSelector
+    IconSelector,
+    AppModal
   },
   setup() {
     const store = useStore();
-    const route = useRoute();
     const router = useRouter();
     
     // Récupération du filtre depuis l'URL si présent
-    const filter = ref(route.query.filter || 'all');
+    const filter = ref(router.currentRoute.value.query.filter || 'all');
     
     // Surveillance du changement de filtre pour mettre à jour l'URL
     watch(filter, (newFilter) => {
-      router.replace({ query: { ...route.query, filter: newFilter } });
+      router.replace({ query: { ...router.currentRoute.value.query, filter: newFilter } });
     });
     
-    const showAddTaskForm = ref(false);
+    const showAddTaskModal = ref(false);
     const addingTask = ref(false);
-    const completingTask = ref(null);
-    const sortOption = ref('status'); // Option de tri par défaut
+    const completingTaskId = ref(null);
+    const sortOption = ref('status');
     
     const showTaskDetails = ref(false);
     const selectedTask = ref({});
@@ -153,47 +194,19 @@ export default {
       description: '',
       category: 'cleaning',
       pointsValue: 5,
-      icon: '' // Ajout du champ icon
+      icon: ''
     });
-    
-    // Liste d'icônes communes pour les tâches - icônes problématiques remplacées
-    const commonIcons = [
-      { value: 'cleaning_services', label: 'Clean' }, // Remplacé 'clean'
-      { value: 'utensils', label: 'Dishes' }, // Remplacé 'wash_dishes'
-      { value: 'local_laundry_service', label: 'Laundry' },
-      { value: 'restaurant', label: 'Cooking' }, // Remplacé 'dinner'
-      { value: 'shopping_cart', label: 'Shopping' },
-      { value: 'pets', label: 'Pets' },
-      { value: 'child_care', label: 'Children' },
-      { value: 'yard', label: 'Garden' },
-      { value: 'build', label: 'Fix/Repair' },
-      { value: 'mop', label: 'Mopping' } // Ajouté une alternative de nettoyage
-    ];
-    
-    // Liste d'icônes supplémentaires
-    const otherIcons = [
-      { value: 'bed', label: 'Bed' },
-      { value: 'bathroom', label: 'Bathroom' },
-      { value: 'kitchen', label: 'Kitchen' },
-      { value: 'living', label: 'Living Room' },
-      { value: 'menu_book', label: 'Book/Study' },
-      { value: 'commute', label: 'Transport' },
-      { value: 'payments', label: 'Payments' },
-      { value: 'grass', label: 'Outdoor' },
-      { value: 'water_drop', label: 'Water' },
-      { value: 'call', label: 'Phone Call' }
-    ];
     
     // Fonction pour obtenir l'icône de catégorie
     const getCategoryIcon = (category) => {
       const icons = {
-        cleaning: 'cleaning_services', // Assurons-nous que c'est cohérent
-        cooking: 'restaurant', // Assurons-nous que c'est cohérent
+        cleaning: 'cleaning_services',
+        cooking: 'restaurant',
         maintenance: 'build',
         outdoor: 'grass',
         shopping: 'shopping_cart',
         laundry: 'local_laundry_service',
-        dishes: 'utensils', // Remplacé par une icône qui fonctionne
+        dishes: 'utensils',
         pets: 'pets',
         childcare: 'child_care'
       };
@@ -272,15 +285,15 @@ export default {
       }
     });
     
-    // Vérifier si l'utilisateur est admin du foyer
-    const isAdmin = computed(() => {
-      if (!household.value) return false;
-      return household.value.adminId === auth.currentUser.uid;
-    });
-    
     // Ajouter une tâche
-    const addTask = async () => {
+    const handleAddTask = async () => {
       if (!household.value) return;
+      
+      // Validation supplémentaire
+      if (!newTask.value.name.trim()) {
+        notificationService.error('Task name is required');
+        return;
+      }
       
       addingTask.value = true;
       
@@ -298,35 +311,47 @@ export default {
           description: '',
           category: 'cleaning',
           pointsValue: 5,
-          icon: '' // Réinitialisation de l'icône
+          icon: ''
         };
         
-        showAddTaskForm.value = false;
+        showAddTaskModal.value = false;
         store.dispatch('fetchTasks');
+        notificationService.success('Task added successfully');
       } catch (error) {
         console.error('Error adding task:', error);
+        notificationService.error('Failed to add task: ' + error.message);
       } finally {
         addingTask.value = false;
       }
     };
     
-    // Compléter une tâche
+    // Fonction pour compléter une tâche
     const completeTask = async (taskId) => {
-      completingTask.value = taskId;
+      if (!authService.isAuthenticated()) {
+        notificationService.error('You must be logged in to complete tasks');
+        router.push('/login');
+        return;
+      }
       
       try {
-        await store.dispatch('completeTask', {
-          taskId,
-          userId: auth.currentUser.uid
+        completingTaskId.value = taskId;
+        
+        await store.dispatch('completeTask', { 
+          taskId, 
+          userId: authService.getCurrentUser().uid 
         });
         
-        // Rafraîchir les tâches et le profil utilisateur
-        store.dispatch('fetchTasks');
-        store.dispatch('fetchUserProfile', auth.currentUser.uid);
+        notificationService.success('Task completed successfully! Points awarded.');
       } catch (error) {
-        console.error('Error completing task:', error);
+        console.error('Failed to complete task:', error);
+        notificationService.error('Failed to complete task: ' + error.message);
+        
+        // Si déconnecté après avoir tenté de compléter la tâche
+        if (!authService.isAuthenticated()) {
+          router.push('/login'); // Corrigé: router au lieu de route
+        }
       } finally {
-        completingTask.value = null;
+        completingTaskId.value = null;
       }
     };
     
@@ -336,23 +361,17 @@ export default {
       showTaskDetails.value = true;
     };
     
-    // Gérer la mise à jour d'une tâche
-    const onTaskUpdated = (updatedTask) => {
-      // Mettre à jour la tâche dans le store
-      const taskIndex = tasks.value.findIndex(t => t.id === updatedTask.id);
-      
-      if (taskIndex !== -1) {
-        const updatedTasks = [...tasks.value];
-        updatedTasks[taskIndex] = { ...updatedTasks[taskIndex], ...updatedTask };
-        store.commit('setTasks', updatedTasks);
-      }
+    // Format date helper
+    const formatDate = (timestamp) => {
+      if (!timestamp) return '';
+      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      return date.toLocaleDateString();
     };
     
-    // Gérer la suppression d'une tâche
-    const onTaskDeleted = (taskId) => {
-      // Supprimer la tâche du store
-      const updatedTasks = tasks.value.filter(t => t.id !== taskId);
-      store.commit('setTasks', updatedTasks);
+    // Get completed by name
+    const getCompletedByName = (userId) => {
+      // Placeholder - idéalement, vous auriez une fonction pour récupérer le nom d'utilisateur
+      return userId; // Retourne l'ID en attendant d'avoir les noms d'utilisateurs
     };
     
     return {
@@ -361,20 +380,17 @@ export default {
       sortOption,
       filteredTasks,
       sortedTasks,
-      showAddTaskForm,
+      showAddTaskModal,
       addingTask,
       newTask,
-      completingTask,
+      handleAddTask,
+      completeTask,
+      completingTaskId,
       showTaskDetails,
       selectedTask,
-      isAdmin,
-      addTask,
-      completeTask,
       openTaskDetails,
-      onTaskUpdated,
-      onTaskDeleted,
-      commonIcons,
-      otherIcons,
+      formatDate,
+      getCompletedByName,
       getCategoryIcon
     };
   }
@@ -402,18 +418,34 @@ export default {
   display: flex;
   align-items: center;
   gap: var(--spacing-small);
-}
-
-.add-task-form {
-  background-color: white;
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  padding: var(--spacing-small) var(--spacing-medium);
   border-radius: var(--border-radius-medium);
-  padding: var(--spacing-large);
-  margin-bottom: var(--spacing-large);
-  box-shadow: var(--shadow-small);
+  font-weight: var(--font-weight-semibold);
 }
 
-.add-task-form form {
-  text-align: left;
+.task-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--spacing-medium);
+  margin-top: var(--spacing-large);
+}
+
+.no-household {
+  text-align: center;
+  padding: var(--spacing-vlarge);
+}
+
+.btn {
+  display: inline-block;
+  background-color: var(--color-primary);
+  color: white;
+  padding: var(--spacing-small) var(--spacing-large);
+  border-radius: var(--border-radius-medium);
+  margin-top: var(--spacing-medium);
+  font-weight: var(--font-weight-semibold);
 }
 
 .form-group {
@@ -426,93 +458,64 @@ export default {
   font-weight: var(--font-weight-semibold);
 }
 
-.task-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: var(--spacing-small);
+  border: 1px solid var(--color-gray-light);
+  border-radius: var(--border-radius-small);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
   gap: var(--spacing-medium);
   margin-top: var(--spacing-large);
 }
 
-.no-household {
-  margin-top: var(--spacing-vlarge);
-  text-align: center;
-}
-
-.btn {
-  display: inline-block;
-  margin-top: var(--spacing-medium);
+.btn-primary {
   background-color: var(--color-primary);
   color: white;
+  border: none;
   padding: var(--spacing-small) var(--spacing-large);
-  border-radius: var(--border-radius-medium);
-  text-decoration: none;
+  border-radius: var(--border-radius-small);
   font-weight: var(--font-weight-semibold);
 }
 
-.icon-selector-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
-  gap: var(--spacing-small);
-  margin: var(--spacing-small) 0;
+.btn-secondary {
+  background-color: var(--color-gray-light);
+  color: var(--color-gray-dark);
+  border: none;
+  padding: var(--spacing-small) var(--spacing-large);
+  border-radius: var(--border-radius-small);
+  font-weight: var(--font-weight-semibold);
 }
 
-.icon-option {
-  position: relative;
+.task-details {
+  padding: var(--spacing-medium) 0;
 }
 
-.icon-option input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
+.task-description {
+  margin-bottom: var(--spacing-medium);
+  white-space: pre-line;
 }
 
-.icon-button {
+.task-meta {
   display: flex;
   flex-direction: column;
+  gap: var(--spacing-small);
+}
+
+.task-meta-item {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  padding: var(--spacing-small);
-  border: 1px solid var(--color--gray-light);
-  border-radius: var(--border-radius-small);
-  cursor: pointer;
-  transition: all var(--transition-fast);
+  padding: var(--spacing-small) 0;
+  border-bottom: 1px solid var(--color-gray-light);
 }
 
-.icon-button i {
-  font-size: 24px;
-  margin-bottom: var(--spacing-vsmall);
-  color: var(--color-secondary);
-}
-
-.icon-button span {
-  font-size: 10px;
-  color: var(--color-gray-dark);
-  text-overflow: ellipsis;
-  overflow: hidden;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-.icon-button.active {
-  background-color: var(--color-primary-light);
-  border-color: var(--color-primary);
-}
-
-.icon-button.active i,
-.icon-button.active span {
-  color: white;
-}
-
-.more-icons {
-  margin-top: var(--spacing-medium);
-}
-
-.more-icons summary {
-  color: var(--color-primary);
-  cursor: pointer;
+.task-meta-item .label {
   font-weight: var(--font-weight-semibold);
-  margin-bottom: var(--spacing-small);
-  user-select: none;
+  min-width: 120px;
 }
 </style>

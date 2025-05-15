@@ -101,7 +101,7 @@ export default {
   padding: var(--spacing-vsmall) var(--spacing-medium);
   padding-right: calc(var(--spacing-medium) * 2);
   border-radius: var(--border-radius-small);
-  border: 1px solid var(--color--gray-light);
+  border: 1px solid var(--color-gray-light);
   background-color: white;
   color: var(--color-secondary);
   font-family: var(--font-family-body);

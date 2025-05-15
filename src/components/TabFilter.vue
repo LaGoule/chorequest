@@ -1,10 +1,12 @@
 <template>
-  <div class="tab-filters">
-    <button 
-      v-for="tab in tabs" 
+  <div class="tab-filter">
+    <button
+      v-for="tab in tabs"
       :key="tab.value"
-      :class="{ active: modelValue === tab.value }" 
-      @click="$emit('update:modelValue', tab.value)"
+      class="tab-button"
+      :class="{ active: modelValue === tab.value }"
+      @click="updateValue(tab.value)"
+      type="button"
     >
       <i v-if="tab.icon" class="material-icons tab-icon">{{ tab.icon }}</i>
       {{ tab.label }}
@@ -23,41 +25,81 @@ export default {
     tabs: {
       type: Array,
       required: true,
-      // Chaque tab doit avoir { label: 'Label', value: 'value', icon?: 'icon_name' }
+      validator: (tabs) => {
+        return tabs.every(tab => 'value' in tab && 'label' in tab);
+      }
     }
   },
-  emits: ['update:modelValue']
+  emits: ['update:modelValue'],
+  setup(props, { emit }) {
+    const updateValue = (value) => {
+      emit('update:modelValue', value);
+    };
+    
+    return {
+      updateValue
+    };
+  }
 }
 </script>
 
 <style scoped>
-.tab-filters {
+.tab-filter {
   display: flex;
-  gap: var(--spacing-small);
-  margin-bottom: var(--spacing-large);
   justify-content: center;
+  border-radius: var(--border-radius-medium);
+  background-color: var(--color-gray-vlight);
+  padding: var(--spacing-vsmall);
+  gap: var(--spacing-vsmall);
+  flex-wrap: wrap;
 }
 
-.tab-filters button {
-  padding: var(--spacing-small) var(--spacing-medium);
-  background-color: var(--color-gray-vlight);
-  color: var(--color-gray-dark);
-  border: 1px solid var(--color--gray-light);
-  border-radius: var(--border-radius-medium);
-  cursor: pointer;
+.tab-button {
   display: flex;
   align-items: center;
-  gap: var(--spacing-vsmall);
+  padding: var(--spacing-small) var(--spacing-medium);
+  border: none;
+  background-color: transparent;
+  border-radius: var(--border-radius-small);
+  cursor: pointer;
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-base);
   transition: all var(--transition-fast);
+  white-space: nowrap;
+  color: var(--color-gray-dark);
 }
 
-.tab-filters button.active {
-  background-color: var(--color-primary);
-  color: white;
-  border-color: var(--color-primary);
+.tab-button:hover {
+  background-color: var(--color-gray-light);
+}
+
+.tab-button.active {
+  background-color: white;
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--shadow-small);
 }
 
 .tab-icon {
-  font-size: 1.1rem;
+  margin-right: var(--spacing-vsmall);
+  font-size: 1rem;
+}
+
+@media (max-width: 600px) {
+  .tab-filter {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: var(--spacing-vsmall) 0;
+    scrollbar-width: none; /* Firefox */
+  }
+  
+  .tab-filter::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
+  
+  .tab-button {
+    padding: var(--spacing-vsmall) var(--spacing-small);
+    font-size: var(--font-size-small);
+  }
 }
 </style>

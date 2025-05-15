@@ -83,7 +83,7 @@ export default {
   margin-top: 0;
   margin-bottom: var(--spacing-medium);
   padding-bottom: var(--spacing-small);
-  border-bottom: 2px solid var(--color--gray-light);
+  border-bottom: 2px solid var(--color-gray-light);
   text-align: center;
   font-size: 1.2rem;
   display: flex;

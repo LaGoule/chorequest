@@ -110,7 +110,7 @@ export default {
 /* Type-specific styling */
 .speech-bubble.type-default {
   background-color: white;
-  border: 1px solid var(--color--gray-light);
+  border: 1px solid var(--color-gray-light);
 }
 
 .speech-bubble.type-info {

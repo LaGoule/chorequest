@@ -1,223 +1,161 @@
 <template>
   <div id="app">
-    <nav v-if="isLoggedIn">
-      <router-link to="/">Home</router-link> |
-      <router-link to="/tasks">Tasks</router-link> |
-      <router-link to="/household">Household</router-link> |
-      <router-link to="/profile">Profile</router-link> |
-      <a href="#" @click.prevent="logout">Logout</a>
+    <nav class="main-nav">
+      <div class="nav-links">
+        <router-link to="/">Home</router-link>
+        <router-link to="/tasks">Tasks</router-link>
+        <router-link to="/household">Household</router-link>
+        <router-link to="/profile">Profile</router-link>
+      </div>
+      <div class="nav-actions">
+        <button @click="logout" class="logout-button">
+          <i class="material-icons">logout</i>
+          Logout
+        </button>
+      </div>
     </nav>
     <router-view/>
+    <AppNotifications />
   </div>
 </template>
 
 <script>
-import { auth } from './firebase'
-import { onAuthStateChanged, signOut } from 'firebase/auth'
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useStore } from 'vuex'
+import AppNotifications from './components/ui/AppNotifications.vue';
+import { authService } from './services/authService';
 
 export default {
+  name: 'App',
+  components: {
+    AppNotifications
+  },
   setup() {
-    const router = useRouter()
-    const store = useStore()
-    const isLoggedIn = ref(false)
-
-    onMounted(() => {
-      onAuthStateChanged(auth, (user) => {
-        isLoggedIn.value = !!user
-        
-        // Clear store data on logout
-        if (!user) {
-          store.commit('setUserProfile', null)
-          store.commit('setHousehold', null)
-          store.commit('setTasks', [])
-          store.commit('setBadges', [])
-        } else {
-          // Fetch user profile when logged in
-          store.dispatch('fetchUserProfile', user.uid)
-        }
-      })
-    })
-
     const logout = async () => {
-      // Clear store data before logging out
-      store.commit('setUserProfile', null)
-      store.commit('setHousehold', null)
-      store.commit('setTasks', [])
-      store.commit('setBadges', [])
-      
-      await signOut(auth)
-      router.push('/login')
-    }
-
+      try {
+        await authService.logout();
+      } catch (error) {
+        console.error('Error logging out:', error);
+      }
+    };
+    
     return {
-      isLoggedIn,
       logout
-    }
+    };
   }
 }
 </script>
 
 <style>
+/* Import variables CSS */
+@import './assets/css/variables.css';
+
 /* Import Inter font from Google Fonts */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-:root {
-  /* Typography */
-  --font-family-headline: 'Inter', Helvetica, Arial, sans-serif;
-  --font-family-body: 'Inter', Helvetica, Arial, sans-serif;
-  --font-size-base: 16px;
-  --font-size-small: 0.875rem;
-  --font-size-large: 1.25rem;
-  --font-weight-light: 300;
-  --font-weight-normal: 400;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 700;
-  
-  /* Colors */
-  --color-primary: #42b983;
-  --color-primary-dark: #3aa876;
-  --color-primary-light: #65c89e;
-  --color-secondary: #2c3e50;
-  --color-secondary-light: #4a6b8a;
-  
-  /* Neutral colors */
-  --color-white: #f8f8f8;
-  --color-gray-vlight: #f5f5f5;
-  --color--gray-light: #e0e0e0;
-  --color-gray-medium: #9e9e9e;
-  --color-gray-dark: #616161;
-  --color-gray-vdark: #212121;
-  --color-black: #080808;
-  
-  /* UI colors */
-  --color-success: var(--color-primary);
-  --color-warning: #ff9800;
-  --color-error: #f44336;
-  --color-info: #2196f3;
-  
-  /* Spacing */
-  --spacing-vsmall: 0.25rem;
-  --spacing-small: 0.5rem;
-  --spacing-medium: 1rem;
-  --spacing-large: 1.5rem;
-  --spacing-vlarge: 2rem;
-  --spacing-vvlarge: 3rem;
-  
-  /* Border radius */
-  --border-radius-small: 0.25rem;
-  --border-radius-medium: 0.5rem;
-  --border-radius-large: 1rem;
-  --border-radius-full: 9999px;
-  
-  /* Box shadow */
-  --shadow-small: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-medium: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-large: 0 10px 15px rgba(0, 0, 0, 0.05), 0 4px 6px rgba(0, 0, 0, 0.05);
-  
-  /* Transitions */
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.25s ease;
-  --transition-slow: 0.4s ease;
-}
 
 body {
   background-color: var(--color-white);
   margin: 0;
   padding: 0;
+}
+
+body {
   font-family: var(--font-family-body);
   font-size: var(--font-size-base);
-  font-weight: var(--font-weight-normal);
-  color: var(--color-secondary);
-}
-
-#app {
-  font-family: var(--font-family-body);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: var(--color-secondary);
-  background-color: var(--color-white);
-}
-
-nav {
-  padding: var(--spacing-vlarge) var(--spacing-medium);
-}
-
-nav a {
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-secondary);
-  margin: 0 var(--spacing-small);
-  text-decoration: none;
-  transition: color var(--transition-fast);
-}
-
-nav a:hover {
-  color: var(--color-primary);
-}
-
-nav a.router-link-exact-active {
-  color: var(--color-primary);
+  line-height: 1.5;
+  color: var(--color-gray-vdark);
+  background-color: #f9f9f9;
 }
 
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-family-headline);
-  font-weight: var(--font-weight-semibold);
-  margin-top: var(--spacing-vlarge);
-  margin-bottom: var(--spacing-medium);
+  color: var(--color-gray-vdark);
 }
 
-h1 {
-  font-size: 2rem;
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
 }
 
-h2 {
-  font-size: 1.75rem;
-}
-
-h3 {
-  font-size: 1.5rem;
-}
-
-h4 {
-  font-size: 1.25rem;
+a:hover {
+  color: var(--color-primary-dark);
 }
 
 button {
-  font-family: var(--font-family-body);
-  background-color: var(--color-primary);
-  color: var(--color-white);
-  border: none;
-  border-radius: var(--border-radius-medium);
-  padding: var(--spacing-small) var(--spacing-large);
-  font-weight: var(--font-weight-semibold);
   cursor: pointer;
-  transition: background-color var(--transition-fast);
-}
-
-button:hover {
-  background-color: var(--color-primary-dark);
-}
-
-button:disabled {
-  background-color: var(--color-gray-medium);
-  cursor: not-allowed;
+  font-family: var(--font-family-body);
 }
 
 input, select, textarea {
   font-family: var(--font-family-body);
-  padding: var(--spacing-small);
-  border: 1px solid var(--color--gray-light);
-  border-radius: var(--border-radius-small);
-  width: 100%;
-  font-size: var(--font-size-base);
-  transition: border-color var(--transition-fast);
 }
 
-input:focus, select:focus, textarea:focus {
-  outline: none;
-  border-color: var(--color-primary);
+/* Navigation styles */
+.main-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-medium);
+  background-color: white;
+  box-shadow: var(--shadow-small);
+}
+
+.nav-links {
+  display: flex;
+}
+
+.nav-links a {
+  margin: 0 var(--spacing-medium);
+  color: var(--color-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.nav-links a.router-link-active {
+  color: var(--color-primary);
+  border-bottom: 2px solid var(--color-primary);
+}
+
+.logout-button {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-vsmall);
+  background: none;
+  border: none;
+  color: var(--color-secondary);
+  font-weight: var(--font-weight-semibold);
+  transition: color var(--transition-fast);
+}
+
+.logout-button:hover {
+  color: var(--color-error);
+}
+
+/* Utility classes */
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.mt-1 {
+  margin-top: var(--spacing-small);
+}
+
+.mt-2 {
+  margin-top: var(--spacing-medium);
+}
+
+.mb-1 {
+  margin-bottom: var(--spacing-small);
+}
+
+.mb-2 {
+  margin-bottom: var(--spacing-medium);
+}
+
+.material-icons {
+  font-size: 1.25rem;
+  vertical-align: middle;
 }
 </style>

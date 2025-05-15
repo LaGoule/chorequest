@@ -1,22 +1,25 @@
 <template>
-  <span 
+  <div 
     class="tag-badge"
     :class="{
       'size-small': size === 'small',
       'size-medium': size === 'medium',
       'size-large': size === 'large',
-      [colorClass]: true
+      [colorClass]: true,
+      clickable
     }"
+    @click="clickable ? $emit('click') : null"
   >
-    <i v-if="icon" class="material-icons" :class="size">{{ icon }}</i>
     <TaskIcon 
-      v-else-if="category" 
+      v-if="category" 
       :category="category" 
       :size="size" 
-      :with-background="false"
+      :with-background="false" 
     />
+    <i v-else-if="icon" class="material-icons icon" :class="size">{{ icon }}</i>
     <span class="tag-text">{{ text }}</span>
-  </span>
+    <i v-if="dismissible" class="material-icons dismiss-icon" @click.stop="$emit('dismiss')">close</i>
+  </div>
 </template>
 
 <script>
@@ -49,8 +52,17 @@ export default {
       type: String,
       default: 'medium',
       validator: (value) => ['small', 'medium', 'large'].includes(value)
+    },
+    clickable: {
+      type: Boolean,
+      default: false
+    },
+    dismissible: {
+      type: Boolean,
+      default: false
     }
   },
+  emits: ['click', 'dismiss'],
   computed: {
     colorClass() {
       return `color-${this.color}`;
@@ -87,6 +99,33 @@ export default {
 .size-large {
   font-size: var(--font-size-base);
   padding: var(--spacing-small) var(--spacing-medium);
+}
+
+.icon {
+  display: inline-block;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.dismiss-icon {
+  cursor: pointer;
+  font-size: 1rem;
+  opacity: 0.7;
+  margin-left: var(--spacing-vsmall);
+}
+
+.dismiss-icon:hover {
+  opacity: 1;
+}
+
+.clickable {
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-small);
 }
 
 /* Couleurs */

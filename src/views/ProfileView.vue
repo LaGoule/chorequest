@@ -8,10 +8,8 @@
       <ProfileStat :value="userProfile?.badges?.length || 0" label="Badges Earned" />
     </div>
     
-    <div class="badges-section">
-      <SectionHeader title="Badges" icon="emoji_events" />
-      
-      <div v-if="!badges.length" class="no-badges">
+    <AppCard title="Badges" icon="emoji_events" class="section-card">
+      <div v-if="!badges.length" class="empty-section">
         <EmptyState icon="military_tech">
           <p>You haven't earned any badges yet. Complete tasks to earn badges!</p>
         </EmptyState>
@@ -24,12 +22,10 @@
           <div class="badge-description">{{ badge.description }}</div>
         </div>
       </div>
-    </div>
+    </AppCard>
     
-    <div class="tasks-history">
-      <SectionHeader title="Tasks History" icon="history" />
-      
-      <div v-if="!completedTasks.length" class="no-tasks">
+    <AppCard title="Tasks History" icon="history" class="section-card">
+      <div v-if="!completedTasks.length" class="empty-section">
         <EmptyState icon="pending_actions">
           <p>You haven't completed any tasks yet.</p>
         </EmptyState>
@@ -39,52 +35,56 @@
         <div v-for="task in completedTasks" :key="task.id" class="task-item">
           <div class="task-info">
             <div class="task-name">{{ task.name }}</div>
-            <div class="task-category">{{ task.category }}</div>
+            <TagBadge 
+              :category="task.category" 
+              :text="formatCategory(task.category)" 
+              size="small"
+            />
           </div>
-          <div class="task-points">+{{ task.pointsValue }}</div>
+          <PointsBadge :value="task.pointsValue" show-plus />
           <div class="task-date">{{ formatDate(task.completedAt) }}</div>
         </div>
       </div>
-    </div>
+    </AppCard>
     
-    <div class="edit-profile">
-      <SectionHeader title="Edit Profile" icon="edit" />
-      
-      <form @submit.prevent="updateProfile">
-        <div class="form-group">
-          <label for="displayName">Display Name</label>
-          <input type="text" id="displayName" v-model="displayName" />
-        </div>
-        
-        <button type="submit" :disabled="updating">{{ updating ? 'Updating...' : 'Update Profile' }}</button>
-      </form>
-    </div>
+    <AppCard title="Edit Profile" icon="edit" class="section-card">
+      <AppForm @submit="handleUpdateProfile" :loading="isUpdating">
+        <AppInput
+          v-model="displayName"
+          label="Display Name"
+          required
+          :error-message="updateError"
+        />
+      </AppForm>
+    </AppCard>
     
-    <!-- Reset points section at the bottom -->
-    <div class="danger-zone">
-      <SectionHeader title="Danger Zone" icon="warning" />
+    <AppCard title="Danger Zone" icon="warning" class="section-card danger-zone">
       <div class="danger-actions">
         <div class="danger-action">
           <div class="danger-description">
             <h3>Reset Points</h3>
             <p>This will reset your points to zero. This action cannot be undone.</p>
           </div>
-          <button class="reset-points-button" @click="showResetConfirm = true">Reset Points</button>
+          <AppButton 
+            label="Reset Points"
+            variant="danger"
+            @click="isShowingResetConfirm = true"
+          />
         </div>
       </div>
-    </div>
+    </AppCard>
     
-    <!-- Reset points confirmation modal using ConfirmModal component -->
+    <!-- Reset points confirmation modal -->
     <ConfirmModal
-      v-model="showResetConfirm"
+      v-model="isShowingResetConfirm"
       title="Reset Points"
       confirmText="Reset Points"
-      :loading="resetting"
+      :loading="isResetting"
       loadingText="Resetting..."
       warning="This action cannot be undone."
       danger
       icon="warning"
-      @confirm="resetPoints"
+      @confirm="handleResetPoints"
     >
       <p>Are you sure you want to reset your points to zero?</p>
     </ConfirmModal>
@@ -94,76 +94,87 @@
 <script>
 import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { notificationService } from '../services/notificationService';
 
-// Importation des nouveaux composants
+// Components
 import ProfileStat from '../components/ProfileStat.vue';
-import SectionHeader from '../components/SectionHeader.vue';
+import AppCard from '../components/ui/AppCard.vue';
+import AppForm from '../components/ui/AppForm.vue';
+import AppInput from '../components/ui/AppInput.vue';
+import AppButton from '../components/ui/AppButton.vue';
 import EmptyState from '../components/EmptyState.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
+import TagBadge from '../components/TagBadge.vue';
+import PointsBadge from '../components/PointsBadge.vue';
 
 export default {
   name: 'ProfileView',
   components: {
     ProfileStat,
-    SectionHeader,
+    AppCard,
+    AppForm,
+    AppInput,
+    AppButton,
     EmptyState,
-    ConfirmModal
+    ConfirmModal,
+    TagBadge,
+    PointsBadge
   },
   setup() {
     const store = useStore();
+    
+    // State
     const displayName = ref('');
-    const updating = ref(false);
-    const showResetConfirm = ref(false);
-    const resetting = ref(false);
+    const isUpdating = ref(false);
+    const updateError = ref('');
+    const isShowingResetConfirm = ref(false);
+    const isResetting = ref(false);
     
+    // Computed properties
     const userProfile = computed(() => store.getters.userProfile);
-    const badges = computed(() => store.getters.badges);
+    const tasks = computed(() => store.getters.tasks || []);
+    
     const completedTasks = computed(() => {
-      const tasks = store.getters.tasks || [];
-      return tasks.filter(task => task.completedBy === auth.currentUser.uid);
+      return tasks.value.filter(task => task.completedBy === auth.currentUser?.uid);
     });
     
+    const badges = computed(() => {
+      return userProfile.value?.badges || [];
+    });
+    
+    // Initialiser le champ avec la valeur actuelle
     onMounted(() => {
-      if (userProfile.value) {
-        displayName.value = userProfile.value.name || '';
-      }
-      
-      // Fetch badges if not already loaded
-      if (!badges.value.length) {
-        store.dispatch('fetchBadges');
+      if (userProfile.value?.name) {
+        displayName.value = userProfile.value.name;
       }
     });
     
-    const updateProfile = async () => {
-      if (displayName.value.trim() === '') return;
+    // Methods
+    const handleUpdateProfile = async () => {
+      if (!displayName.value.trim()) {
+        updateError.value = 'Please enter a display name';
+        return;
+      }
       
-      updating.value = true;
+      isUpdating.value = true;
+      updateError.value = '';
       
       try {
-        const userRef = doc(db, 'users', auth.currentUser.uid);
-        
-        await updateDoc(userRef, {
-          name: displayName.value
-        });
-        
-        // Update local state
-        store.commit('setUserProfile', {
-          ...userProfile.value,
-          name: displayName.value
-        });
-        
-      } catch (error) {
-        console.error('Error updating profile:', error);
+        await store.dispatch('updateProfile', { name: displayName.value.trim() });
+        notificationService.success('Profile updated successfully');
+      } catch (err) {
+        console.error('Error updating profile:', err);
+        updateError.value = err.message || 'Failed to update profile';
+        notificationService.error('Failed to update profile: ' + (err.message || 'Unknown error'));
       } finally {
-        updating.value = false;
+        isUpdating.value = false;
       }
     };
     
-    const resetPoints = async () => {
-      resetting.value = true;
+    const handleResetPoints = async () => {
+      isResetting.value = true;
       
       try {
         const userRef = doc(db, 'users', auth.currentUser.uid);
@@ -178,11 +189,13 @@ export default {
           points: 0
         });
         
-        showResetConfirm.value = false;
+        isShowingResetConfirm.value = false;
+        notificationService.success('Points have been reset to zero');
       } catch (error) {
         console.error('Error resetting points:', error);
+        notificationService.error('Failed to reset points: ' + (error.message || 'Unknown error'));
       } finally {
-        resetting.value = false;
+        isResetting.value = false;
       }
     };
     
@@ -193,17 +206,24 @@ export default {
       return date.toLocaleDateString();
     };
     
+    const formatCategory = (category) => {
+      if (!category) return '';
+      return category.charAt(0).toUpperCase() + category.slice(1);
+    };
+    
     return {
       userProfile,
-      badges,
-      completedTasks,
       displayName,
-      updating,
-      showResetConfirm,
-      resetting,
-      updateProfile,
-      resetPoints,
-      formatDate
+      isUpdating,
+      updateError,
+      isShowingResetConfirm,
+      isResetting,
+      completedTasks,
+      badges,
+      handleUpdateProfile,
+      handleResetPoints,
+      formatDate,
+      formatCategory
     };
   }
 }
@@ -223,7 +243,7 @@ export default {
   margin-bottom: var(--spacing-large);
 }
 
-.badges-section, .tasks-history, .edit-profile, .danger-zone {
+.section-card {
   margin-top: var(--spacing-vvlarge);
 }
 
@@ -308,8 +328,6 @@ export default {
 
 .danger-zone {
   margin-top: var(--spacing-vvlarge);
-  padding-top: var(--spacing-large);
-  border-top: 1px solid var(--color--gray-light);
 }
 
 .danger-actions {

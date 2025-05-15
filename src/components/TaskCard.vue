@@ -31,7 +31,6 @@
           :text="formatCategory(task.category)" 
           size="small"
         />
-        <!-- Emplacement futur pour des tags supplémentaires -->
       </div>
     </div>
     
@@ -43,27 +42,27 @@
       </p>
     </div>
     
-    <div v-if="!compact" class="task-footer">
+    <div class="task-footer">
       <slot name="actions"></slot>
       
-      <button 
-        v-if="!task.completedBy && showCompleteButton" 
-        class="complete-button"
+      <AppButton
+        v-if="!task.completedBy && showCompleteButton"
+        variant="success"
+        size="small"
+        icon="check"
+        :label="completing ? 'Completing...' : 'Complete'"
+        :loading="completing"
         @click.stop="$emit('complete', task.id)"
-        :disabled="completing"
-      >
-        <i class="material-icons">check</i>
-        {{ completing ? 'Completing...' : 'Complete' }}
-      </button>
+      />
       
-      <button 
-        v-if="showDetailsButton" 
-        class="details-button"
+      <AppButton
+        v-if="showDetailsButton"
+        variant="outline"
+        size="small"
+        icon="visibility"
+        :label="detailsButtonText || 'Details'"
         @click.stop="$emit('view-details', task)"
-      >
-        <i class="material-icons">visibility</i>
-        {{ detailsButtonText || 'Details' }}
-      </button>
+      />
     </div>
   </div>
 </template>
@@ -73,13 +72,15 @@ import { auth } from '../firebase';
 import TaskIcon from './TaskIcon.vue';
 import PointsBadge from './PointsBadge.vue';
 import TagBadge from './TagBadge.vue';
+import AppButton from './ui/AppButton.vue';
 
 export default {
   name: 'TaskCard',
   components: {
     TaskIcon,
     PointsBadge,
-    TagBadge
+    TagBadge,
+    AppButton
   },
   props: {
     task: {
@@ -159,7 +160,7 @@ export default {
 
 <style scoped>
 .task-card {
-  border: 1px solid var(--color--gray-light);
+  border: 1px solid var(--color-gray-light);
   border-radius: var(--border-radius-medium);
   padding: var(--spacing-medium);
   box-shadow: var(--shadow-small);
@@ -226,7 +227,7 @@ export default {
 
 .task-completed {
   background-color: var(--color-gray-vlight);
-  border-color: var(--color--gray-light);
+  border-color: var(--color-gray-light);
   opacity: 0.85;
 }
 
@@ -262,38 +263,5 @@ export default {
 
 .compact-mode .task-footer {
   margin-top: var(--spacing-small);
-}
-
-.complete-button {
-  background-color: var(--color--gray-white);
-  border: 1px solid var(--color-success);
-  color: var(--color-success);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--spacing-vsmall);
-  font-size: var(--font-size-small);
-  padding: var(--spacing-vsmall) var(--spacing-small);
-}
-
-.complete-button:hover {
-    background-color: var(--color-success);
-    color: var(--color-white);
-}
-
-.details-button {
-  background-color: var(--color--gray-white);
-  border: 1px solid var(--color-secondary-light);
-  color: var(--color-secondary-light);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-vsmall);
-  font-size: var(--font-size-small);
-  padding: var(--spacing-vsmall) var(--spacing-small);
-}
-
-.details-button:hover {
-  background-color: var(--color-secondary-light);
-  color: var(--color-white);
 }
 </style>

@@ -62,7 +62,7 @@ export default {
 <style scoped>
 .task-category-group {
   margin-bottom: var(--spacing-medium);
-  border: 1px solid var(--color--gray-light);
+  border: 1px solid var(--color-gray-light);
   border-radius: var(--border-radius-medium);
   overflow: hidden;
 }
