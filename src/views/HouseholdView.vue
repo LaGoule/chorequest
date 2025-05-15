@@ -7,10 +7,20 @@
       
       <div class="members">
         <h3>Household Members</h3>
-        <ul>
-          <li v-for="member in householdMembers" :key="member.id">
-            {{ member.name }} - {{ member.points || 0 }} points
-            <span v-if="member.id === household.adminId">(Admin)</span>
+        <ul class="members-list">
+          <li v-for="member in householdMembers" :key="member.id" class="member-row">
+            <div class="member-name">
+              {{ member.name }}
+              <span v-if="member.id === household.adminId" class="admin-badge">
+                <span class="shield-icon">🛡️</span>
+              </span>
+            </div>
+            <div class="member-points">
+              <div class="points-container">
+                <span class="points-value">{{ member.points || 0 }}</span>
+                <span class="points-label">&nbsp;points</span>
+              </div>
+            </div>
           </li>
         </ul>
       </div>
@@ -225,38 +235,89 @@ export default {
 .household {
   max-width: 800px;
   margin: 0 auto;
-  padding: 20px;
+  padding: var(--spacing-vlarge);
 }
 
 .household-options, .household-details {
-  margin-top: 30px;
+  margin-top: var(--spacing-vlarge);
 }
 
 .option-buttons {
   display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: var(--spacing-small);
+  margin-bottom: var(--spacing-vlarge);
 }
 
 .create-form, .join-form {
-  background-color: #f5f5f5;
-  padding: 20px;
-  border-radius: 8px;
-  margin-top: 20px;
+  background-color: var(--color-gray-vlight);
+  padding: var(--spacing-vlarge);
+  border-radius: var(--border-radius-medium);
+  margin-top: var(--spacing-vlarge);
 }
 
 .members {
-  margin-top: 30px;
+  margin-top: var(--spacing-vlarge);
 }
 
-.members ul {
+.members-list {
   list-style-type: none;
   padding: 0;
 }
 
-.members li {
-  padding: 10px;
-  border-bottom: 1px solid #eee;
+.member-row {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--spacing-medium);
+  border-bottom: 1px solid var(--color--gray-light);
+  transition: background-color var(--transition-fast);
+}
+
+.member-row:hover {
+  background-color: var(--color-gray-vlight);
+}
+
+.member-name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  font-weight: var(--font-weight-semibold);
+}
+
+.member-points {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.points-container {
+  background-color: var(--color-primary);
+  color: #ffffff; /* Pure white for better contrast */
+  border-radius: var(--border-radius-full);
+  padding: var(--spacing-vsmall) var(--spacing-large);
+  display: inline-flex;
+  align-items: center;
+  box-shadow: var(--shadow-small);
+}
+
+.points-value {
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-large);
+  margin-right: var(--spacing-vsmall);
+}
+
+.points-label {
+  font-size: var(--font-size-small);
+  opacity: 0.9;
+}
+
+.admin-badge {
+  color: var(--color-primary);
+  margin-right: var(--spacing-small);
+}
+
+.shield-icon {
+  font-size: 1.2em;
 }
 
 .leaderboard {

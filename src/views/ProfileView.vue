@@ -3,27 +3,18 @@
     <h1>Your Profile</h1>
     
     <div class="profile-stats">
-      <div class="stat-card">
-        <div class="stat-value">{{ userProfile?.points || 0 }}</div>
-        <div class="stat-label">Total Points</div>
-      </div>
-      
-      <div class="stat-card">
-        <div class="stat-value">{{ completedTasks.length }}</div>
-        <div class="stat-label">Tasks Completed</div>
-      </div>
-      
-      <div class="stat-card">
-        <div class="stat-value">{{ userProfile?.badges?.length || 0 }}</div>
-        <div class="stat-label">Badges Earned</div>
-      </div>
+      <ProfileStat :value="userProfile?.points || 0" label="Total Points" />
+      <ProfileStat :value="completedTasks.length" label="Tasks Completed" />
+      <ProfileStat :value="userProfile?.badges?.length || 0" label="Badges Earned" />
     </div>
     
     <div class="badges-section">
-      <h2>Badges</h2>
+      <SectionHeader title="Badges" icon="emoji_events" />
       
       <div v-if="!badges.length" class="no-badges">
-        <p>You haven't earned any badges yet. Complete tasks to earn badges!</p>
+        <EmptyState icon="military_tech">
+          <p>You haven't earned any badges yet. Complete tasks to earn badges!</p>
+        </EmptyState>
       </div>
       
       <div v-else class="badges-grid">
@@ -36,10 +27,12 @@
     </div>
     
     <div class="tasks-history">
-      <h2>Tasks History</h2>
+      <SectionHeader title="Tasks History" icon="history" />
       
       <div v-if="!completedTasks.length" class="no-tasks">
-        <p>You haven't completed any tasks yet.</p>
+        <EmptyState icon="pending_actions">
+          <p>You haven't completed any tasks yet.</p>
+        </EmptyState>
       </div>
       
       <div v-else class="tasks-list">
@@ -55,7 +48,7 @@
     </div>
     
     <div class="edit-profile">
-      <h2>Edit Profile</h2>
+      <SectionHeader title="Edit Profile" icon="edit" />
       
       <form @submit.prevent="updateProfile">
         <div class="form-group">
@@ -66,117 +59,152 @@
         <button type="submit" :disabled="updating">{{ updating ? 'Updating...' : 'Update Profile' }}</button>
       </form>
     </div>
+    
+    <!-- Reset points section at the bottom -->
+    <div class="danger-zone">
+      <SectionHeader title="Danger Zone" icon="warning" />
+      <div class="danger-actions">
+        <div class="danger-action">
+          <div class="danger-description">
+            <h3>Reset Points</h3>
+            <p>This will reset your points to zero. This action cannot be undone.</p>
+          </div>
+          <button class="reset-points-button" @click="showResetConfirm = true">Reset Points</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Reset points confirmation modal using ConfirmModal component -->
+    <ConfirmModal
+      v-model="showResetConfirm"
+      title="Reset Points"
+      confirmText="Reset Points"
+      :loading="resetting"
+      loadingText="Resetting..."
+      warning="This action cannot be undone."
+      danger
+      icon="warning"
+      @confirm="resetPoints"
+    >
+      <p>Are you sure you want to reset your points to zero?</p>
+    </ConfirmModal>
   </div>
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
-import { useStore } from 'vuex'
-import { auth, db } from '../firebase'
-import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore'
+import { ref, computed, onMounted } from 'vue';
+import { useStore } from 'vuex';
+import { auth } from '../firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+
+// Importation des nouveaux composants
+import ProfileStat from '../components/ProfileStat.vue';
+import SectionHeader from '../components/SectionHeader.vue';
+import EmptyState from '../components/EmptyState.vue';
+import ConfirmModal from '../components/ConfirmModal.vue';
 
 export default {
   name: 'ProfileView',
+  components: {
+    ProfileStat,
+    SectionHeader,
+    EmptyState,
+    ConfirmModal
+  },
   setup() {
-    const store = useStore()
-    const displayName = ref('')
-    const updating = ref(false)
-    const completedTasks = ref([])
-    const badges = ref([])
+    const store = useStore();
+    const displayName = ref('');
+    const updating = ref(false);
+    const showResetConfirm = ref(false);
+    const resetting = ref(false);
     
-    const userProfile = computed(() => store.getters.userProfile)
+    const userProfile = computed(() => store.getters.userProfile);
+    const badges = computed(() => store.getters.badges);
+    const completedTasks = computed(() => {
+      const tasks = store.getters.tasks || [];
+      return tasks.filter(task => task.completedBy === auth.currentUser.uid);
+    });
     
-    onMounted(async () => {
+    onMounted(() => {
       if (userProfile.value) {
-        displayName.value = userProfile.value.name
-        await fetchCompletedTasks()
-        await fetchBadges()
-      }
-    })
-    
-    const fetchCompletedTasks = async () => {
-      const tasksQuery = query(
-        collection(db, 'tasks'),
-        where('completedBy', '==', auth.currentUser.uid)
-      )
-      
-      const taskSnap = await getDocs(tasksQuery)
-      const tasks = []
-      
-      taskSnap.forEach(doc => {
-        tasks.push({
-          id: doc.id,
-          ...doc.data()
-        })
-      })
-      
-      completedTasks.value = tasks
-    }
-    
-    const fetchBadges = async () => {
-      if (!userProfile.value?.badges || userProfile.value.badges.length === 0) {
-        badges.value = []
-        return
+        displayName.value = userProfile.value.name || '';
       }
       
-      const fetchedBadges = []
-      
-      for (const badgeId of userProfile.value.badges) {
-        const badgeSnap = await getDocs(
-          query(collection(db, 'badges'), where('id', '==', badgeId))
-        )
-        
-        if (!badgeSnap.empty) {
-          badgeSnap.forEach(doc => {
-            fetchedBadges.push({
-              id: doc.id,
-              ...doc.data()
-            })
-          })
-        }
+      // Fetch badges if not already loaded
+      if (!badges.value.length) {
+        store.dispatch('fetchBadges');
       }
-      
-      badges.value = fetchedBadges
-    }
+    });
     
     const updateProfile = async () => {
-      updating.value = true
+      if (displayName.value.trim() === '') return;
+      
+      updating.value = true;
       
       try {
-        const userRef = doc(db, 'users', auth.currentUser.uid)
+        const userRef = doc(db, 'users', auth.currentUser.uid);
         
         await updateDoc(userRef, {
           name: displayName.value
-        })
+        });
         
         // Update local state
         store.commit('setUserProfile', {
           ...userProfile.value,
           name: displayName.value
-        })
+        });
+        
       } catch (error) {
-        console.error('Error updating profile:', error)
+        console.error('Error updating profile:', error);
       } finally {
-        updating.value = false
+        updating.value = false;
       }
-    }
+    };
+    
+    const resetPoints = async () => {
+      resetting.value = true;
+      
+      try {
+        const userRef = doc(db, 'users', auth.currentUser.uid);
+        
+        await updateDoc(userRef, {
+          points: 0
+        });
+        
+        // Update local state
+        store.commit('setUserProfile', {
+          ...userProfile.value,
+          points: 0
+        });
+        
+        showResetConfirm.value = false;
+      } catch (error) {
+        console.error('Error resetting points:', error);
+      } finally {
+        resetting.value = false;
+      }
+    };
     
     const formatDate = (timestamp) => {
-      if (!timestamp) return ''
+      if (!timestamp) return '';
       
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
-      return date.toLocaleDateString()
-    }
+      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      return date.toLocaleDateString();
+    };
     
     return {
       userProfile,
+      badges,
+      completedTasks,
       displayName,
       updating,
-      completedTasks,
-      badges,
+      showResetConfirm,
+      resetting,
       updateProfile,
+      resetPoints,
       formatDate
-    }
+    };
   }
 }
 </script>
@@ -185,127 +213,143 @@ export default {
 .profile {
   max-width: 800px;
   margin: 0 auto;
-  padding: 20px;
+  padding: var(--spacing-medium);
 }
 
 .profile-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 15px;
-  margin-bottom: 30px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--spacing-medium);
+  margin-bottom: var(--spacing-large);
 }
 
-.stat-card {
-  background-color: #f5f5f5;
-  border-radius: 8px;
-  padding: 15px;
-  text-align: center;
-}
-
-.stat-value {
-  font-size: 32px;
-  font-weight: bold;
-  color: #42b983;
-}
-
-.stat-label {
-  margin-top: 5px;
-  color: #666;
-}
-
-.badges-section, .tasks-history, .edit-profile {
-  margin-top: 30px;
+.badges-section, .tasks-history, .edit-profile, .danger-zone {
+  margin-top: var(--spacing-vvlarge);
 }
 
 .badges-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 15px;
-  margin-top: 15px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--spacing-medium);
 }
 
 .badge-card {
-  background-color: #f5f5f5;
-  border-radius: 8px;
-  padding: 15px;
+  background-color: white;
+  border-radius: var(--border-radius-medium);
+  padding: var(--spacing-medium);
+  box-shadow: var(--shadow-small);
   text-align: center;
 }
 
 .badge-icon {
-  font-size: 32px;
-  margin-bottom: 10px;
+  font-size: 2rem;
+  margin-bottom: var(--spacing-small);
 }
 
 .badge-name {
-  font-weight: bold;
-  margin-bottom: 5px;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--spacing-vsmall);
 }
 
 .badge-description {
-  font-size: 14px;
-  color: #666;
+  font-size: var(--font-size-small);
+  color: var(--color-gray-dark);
 }
 
 .tasks-list {
-  margin-top: 15px;
+  display: flex;
+  flex-direction: column;
+  
+  gap: var(--spacing-small);
 }
 
 .task-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px;
-  border-bottom: 1px solid #eee;
+  padding: var(--spacing-medium);
+  background-color: white;
+  border-radius: var(--border-radius-medium);
+  box-shadow: var(--shadow-small);
+}
+
+.task-info {
+  flex: 1;
+  text-align: left;
 }
 
 .task-name {
-  font-weight: bold;
+  font-weight: var(--font-weight-semibold);
 }
 
 .task-category {
-  font-size: 14px;
-  color: #666;
-  margin-top: 5px;
+  color: var(--color-gray-dark);
+  font-size: var(--font-size-small);
+  margin-top: var(--spacing-vsmall);
 }
 
 .task-points {
-  font-weight: bold;
-  color: #42b983;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin: 0 var(--spacing-medium);
 }
 
-.edit-profile {
-  background-color: #f5f5f5;
-  border-radius: 8px;
-  padding: 20px;
+.task-date {
+  color: var(--color-gray-dark);
+  font-size: var(--font-size-small);
 }
 
-button {
-  padding: 10px 20px;
-  background-color: #42b983;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
+.edit-profile form {
+  background-color: white;
+  border-radius: var(--border-radius-medium);
+  padding: var(--spacing-large);
+  box-shadow: var(--shadow-small);
 }
 
-button:disabled {
-  background-color: #cccccc;
+.danger-zone {
+  margin-top: var(--spacing-vvlarge);
+  padding-top: var(--spacing-large);
+  border-top: 1px solid var(--color--gray-light);
+}
+
+.danger-actions {
+  background-color: var(--color-gray-vlight);
+  border-radius: var(--border-radius-medium);
+  padding: var(--spacing-medium);
+}
+
+.danger-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.danger-description {
+  text-align: left;
+}
+
+.danger-description h3 {
+  margin-top: 0;
+  margin-bottom: var(--spacing-vsmall);
+  color: var(--color-gray-vdark);
+}
+
+.danger-description p {
+  margin-bottom: 0;
+  color: var(--color-gray-dark);
+}
+
+.reset-points-button {
+  background-color: var(--color-error);
+  white-space: nowrap;
+  padding: var(--spacing-small) var(--spacing-large);
+}
+
+.reset-points-button:hover {
+  background-color: #d32f2f; /* Darker red */
 }
 
 .form-group {
-  margin-bottom: 15px;
-}
-
-label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: bold;
-}
-
-input {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  margin-bottom: var(--spacing-medium);
 }
 </style>

@@ -3,24 +3,33 @@
     <h1>Household Tasks</h1>
     
     <div class="tasks-container" v-if="household">
-      <div class="task-filters">
-        <button :class="{ active: filter === 'all' }" @click="filter = 'all'">All Tasks</button>
-        <button :class="{ active: filter === 'available' }" @click="filter = 'available'">Available Tasks</button>
-        <button :class="{ active: filter === 'completed' }" @click="filter = 'completed'">Completed Tasks</button>
-      </div>
+      <TaskFilters
+        v-model:filter="filter"
+        v-model:sortOption="sortOption"
+      />
       
-      <div v-if="isAdmin" class="admin-actions">
+      <div class="user-actions">
         <button @click="showAddTaskForm = !showAddTaskForm">
+          <i class="material-icons">{{ showAddTaskForm ? 'cancel' : 'add_circle' }}</i>
           {{ showAddTaskForm ? 'Cancel' : 'Add New Task' }}
         </button>
       </div>
       
       <div v-if="showAddTaskForm" class="add-task-form">
-        <h3>Add New Task</h3>
+        <SectionHeader title="Add New Task" icon="add_task" />
         <form @submit.prevent="addTask">
           <div class="form-group">
             <label for="taskName">Task Name</label>
             <input type="text" id="taskName" v-model="newTask.name" required />
+          </div>
+          
+          <div class="form-group">
+            <label for="taskIcon">Task Icon (optional)</label>
+            <IconSelector 
+              v-model="newTask.icon" 
+              :category="newTask.category" 
+              input-id="new-task-icon" 
+            />
           </div>
           
           <div class="form-group">
@@ -36,55 +45,61 @@
               <option value="maintenance">Maintenance</option>
               <option value="outdoor">Outdoor</option>
               <option value="shopping">Shopping</option>
+              <option value="laundry">Laundry</option>
+              <option value="dishes">Dishes</option>
+              <option value="pets">Pets</option>
+              <option value="childcare">Childcare</option>
             </select>
           </div>
           
           <div class="form-group">
             <label for="taskPoints">Points Value</label>
-            <input type="number" id="taskPoints" v-model.number="newTask.pointsValue" min="1" required />
+            <input type="number" id="taskPoints" v-model.number="newTask.pointsValue" min="1" max="10" required />
           </div>
           
-          <button type="submit" :disabled="addingTask">{{ addingTask ? 'Adding...' : 'Add Task' }}</button>
+          <button type="submit" :disabled="addingTask">
+            <i class="material-icons">add</i>
+            {{ addingTask ? 'Adding...' : 'Add Task' }}
+          </button>
         </form>
       </div>
       
-      <div v-if="filteredTasks.length === 0" class="no-tasks">
+      <EmptyState 
+        v-if="filteredTasks.length === 0"
+        icon="search_off"
+      >
         <p>No tasks found.</p>
-      </div>
+      </EmptyState>
       
-      <div v-else class="task-list">
-        <div v-for="task in filteredTasks" :key="task.id" class="task-card">
-          <div class="task-header">
-            <h3>{{ task.name }}</h3>
-            <span class="points-badge">{{ task.pointsValue }} points</span>
-          </div>
-          
-          <div class="task-body">
-            <p>{{ task.description }}</p>
-            <span class="category-badge">{{ task.category }}</span>
-          </div>
-          
-          <div class="task-footer">
-            <button 
-              v-if="!task.completedBy"
-              @click="completeTask(task.id)"
-              :disabled="completingTask"
-            >
-              {{ completingTask === task.id ? 'Completing...' : 'Complete Task' }}
-            </button>
-            <div v-else class="completed-info">
-              <p>Completed by {{ getCompletedByName(task.completedBy) }}</p>
-              <p>{{ formatDate(task.completedAt) }}</p>
-            </div>
-          </div>
-        </div>
+      <div v-else class="task-grid">
+        <TaskCard
+          v-for="task in sortedTasks"
+          :key="task.id"
+          :task="task"
+          :completing="completingTask === task.id"
+          :show-complete-button="!task.completedBy"
+          :show-details-button="true"
+          @complete="completeTask"
+          @view-details="openTaskDetails"
+        />
       </div>
     </div>
     
     <div v-else class="no-household">
-      <p>You need to join a household to see and manage tasks.</p>
+      <EmptyState icon="home_work">
+        <p>You need to join a household to see and manage tasks.</p>
+      </EmptyState>
       <router-link to="/household" class="btn">Join or Create Household</router-link>
     </div>
+    
+    <TaskDetailModal
+      v-model="showTaskDetails"
+      :task="selectedTask"
+      :isAdmin="isAdmin"
+      @task-updated="onTaskUpdated"
+      @task-completed="completeTask"
+      @task-deleted="onTaskDeleted"
+    />
   </div>
 </template>
 
@@ -93,34 +108,103 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useStore } from 'vuex';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useRoute, useRouter } from 'vue-router';
+
+import TaskCard from '../components/TaskCard.vue';
+import TaskFilters from '../components/TaskFilters.vue';
+import TaskDetailModal from '../components/TaskDetailModal.vue';
+import EmptyState from '../components/EmptyState.vue';
+import SectionHeader from '../components/SectionHeader.vue';
+import IconSelector from '../components/IconSelector.vue';
 
 export default {
   name: 'TasksView',
+  components: {
+    TaskCard,
+    TaskFilters,
+    TaskDetailModal,
+    EmptyState,
+    SectionHeader,
+    IconSelector
+  },
   setup() {
     const store = useStore();
-    const filter = ref('all');
+    const route = useRoute();
+    const router = useRouter();
+    
+    // Récupération du filtre depuis l'URL si présent
+    const filter = ref(route.query.filter || 'all');
+    
+    // Surveillance du changement de filtre pour mettre à jour l'URL
+    watch(filter, (newFilter) => {
+      router.replace({ query: { ...route.query, filter: newFilter } });
+    });
+    
     const showAddTaskForm = ref(false);
     const addingTask = ref(false);
     const completingTask = ref(null);
+    const sortOption = ref('status'); // Option de tri par défaut
+    
+    const showTaskDetails = ref(false);
+    const selectedTask = ref({});
     
     const newTask = ref({
       name: '',
       description: '',
       category: 'cleaning',
-      pointsValue: 5
+      pointsValue: 5,
+      icon: '' // Ajout du champ icon
     });
+    
+    // Liste d'icônes communes pour les tâches - icônes problématiques remplacées
+    const commonIcons = [
+      { value: 'cleaning_services', label: 'Clean' }, // Remplacé 'clean'
+      { value: 'utensils', label: 'Dishes' }, // Remplacé 'wash_dishes'
+      { value: 'local_laundry_service', label: 'Laundry' },
+      { value: 'restaurant', label: 'Cooking' }, // Remplacé 'dinner'
+      { value: 'shopping_cart', label: 'Shopping' },
+      { value: 'pets', label: 'Pets' },
+      { value: 'child_care', label: 'Children' },
+      { value: 'yard', label: 'Garden' },
+      { value: 'build', label: 'Fix/Repair' },
+      { value: 'mop', label: 'Mopping' } // Ajouté une alternative de nettoyage
+    ];
+    
+    // Liste d'icônes supplémentaires
+    const otherIcons = [
+      { value: 'bed', label: 'Bed' },
+      { value: 'bathroom', label: 'Bathroom' },
+      { value: 'kitchen', label: 'Kitchen' },
+      { value: 'living', label: 'Living Room' },
+      { value: 'menu_book', label: 'Book/Study' },
+      { value: 'commute', label: 'Transport' },
+      { value: 'payments', label: 'Payments' },
+      { value: 'grass', label: 'Outdoor' },
+      { value: 'water_drop', label: 'Water' },
+      { value: 'call', label: 'Phone Call' }
+    ];
+    
+    // Fonction pour obtenir l'icône de catégorie
+    const getCategoryIcon = (category) => {
+      const icons = {
+        cleaning: 'cleaning_services', // Assurons-nous que c'est cohérent
+        cooking: 'restaurant', // Assurons-nous que c'est cohérent
+        maintenance: 'build',
+        outdoor: 'grass',
+        shopping: 'shopping_cart',
+        laundry: 'local_laundry_service',
+        dishes: 'utensils', // Remplacé par une icône qui fonctionne
+        pets: 'pets',
+        childcare: 'child_care'
+      };
+      
+      return icons[category] || 'task_alt';
+    };
     
     const household = computed(() => store.getters.household);
-    const tasks = computed(() => store.getters.tasks);
-    
-    const isAdmin = computed(() => {
-      if (!household.value) return false;
-      return household.value.adminId === auth.currentUser.uid;
-    });
+    const tasks = computed(() => store.getters.tasks || []);
     
     const filteredTasks = computed(() => {
-      if (!tasks.value) return [];
-      
       if (filter.value === 'available') {
         return tasks.value.filter(task => !task.completedBy);
       } else if (filter.value === 'completed') {
@@ -130,19 +214,71 @@ export default {
       return tasks.value;
     });
     
+    // Tri des tâches selon différents critères
+    const sortedTasks = computed(() => {
+      const tasksToSort = [...filteredTasks.value];
+      
+      switch (sortOption.value) {
+        case 'status':
+          // Les tâches disponibles d'abord, puis les complétées
+          return tasksToSort.sort((a, b) => {
+            if (a.completedBy && !b.completedBy) return 1;
+            if (!a.completedBy && b.completedBy) return -1;
+            return b.pointsValue - a.pointsValue; // Sous-tri par points
+          });
+        
+        case 'points':
+          // Tri par points décroissant
+          return tasksToSort.sort((a, b) => b.pointsValue - a.pointsValue);
+        
+        case 'date':
+          // Tri par date d'ajout (plus récent d'abord)
+          return tasksToSort.sort((a, b) => {
+            const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+            const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+            return dateB - dateA;
+          });
+        
+        case 'name':
+          // Tri alphabétique par nom
+          return tasksToSort.sort((a, b) => {
+            return a.name.localeCompare(b.name);
+          });
+        
+        case 'category':
+          // Tri par catégorie puis par nom
+          return tasksToSort.sort((a, b) => {
+            const categoryCompare = a.category.localeCompare(b.category);
+            if (categoryCompare !== 0) return categoryCompare;
+            return a.name.localeCompare(b.name);
+          });
+        
+        default:
+          return tasksToSort;
+      }
+    });
+    
+    // Chargement initial des tâches
     onMounted(() => {
       if (household.value && household.value.id) {
         store.dispatch('fetchTasks');
       }
     });
     
-    // Add a watcher for the household value
+    // Surveillance des changements de household
     watch(household, (newHousehold) => {
       if (newHousehold && newHousehold.id) {
         store.dispatch('fetchTasks');
       }
     });
     
+    // Vérifier si l'utilisateur est admin du foyer
+    const isAdmin = computed(() => {
+      if (!household.value) return false;
+      return household.value.adminId === auth.currentUser.uid;
+    });
+    
+    // Ajouter une tâche
     const addTask = async () => {
       if (!household.value) return;
       
@@ -156,11 +292,13 @@ export default {
           createdBy: auth.currentUser.uid
         });
         
+        // Réinitialiser le formulaire
         newTask.value = {
           name: '',
           description: '',
           category: 'cleaning',
-          pointsValue: 5
+          pointsValue: 5,
+          icon: '' // Réinitialisation de l'icône
         };
         
         showAddTaskForm.value = false;
@@ -172,6 +310,7 @@ export default {
       }
     };
     
+    // Compléter une tâche
     const completeTask = async (taskId) => {
       completingTask.value = taskId;
       
@@ -181,7 +320,7 @@ export default {
           userId: auth.currentUser.uid
         });
         
-        // Refresh tasks
+        // Rafraîchir les tâches et le profil utilisateur
         store.dispatch('fetchTasks');
         store.dispatch('fetchUserProfile', auth.currentUser.uid);
       } catch (error) {
@@ -191,155 +330,189 @@ export default {
       }
     };
     
-    const getCompletedByName = (userId) => {
-      // In a real app, you would lookup the user name by ID
-      return userId === auth.currentUser.uid ? 'you' : 'someone else';
+    // Ouvrir la modal de détails de tâche
+    const openTaskDetails = (task) => {
+      selectedTask.value = task;
+      showTaskDetails.value = true;
     };
     
-    const formatDate = (timestamp) => {
-      if (!timestamp) return '';
+    // Gérer la mise à jour d'une tâche
+    const onTaskUpdated = (updatedTask) => {
+      // Mettre à jour la tâche dans le store
+      const taskIndex = tasks.value.findIndex(t => t.id === updatedTask.id);
       
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-      return date.toLocaleDateString();
+      if (taskIndex !== -1) {
+        const updatedTasks = [...tasks.value];
+        updatedTasks[taskIndex] = { ...updatedTasks[taskIndex], ...updatedTask };
+        store.commit('setTasks', updatedTasks);
+      }
+    };
+    
+    // Gérer la suppression d'une tâche
+    const onTaskDeleted = (taskId) => {
+      // Supprimer la tâche du store
+      const updatedTasks = tasks.value.filter(t => t.id !== taskId);
+      store.commit('setTasks', updatedTasks);
     };
     
     return {
       household,
-      tasks,
       filter,
+      sortOption,
       filteredTasks,
+      sortedTasks,
       showAddTaskForm,
-      newTask,
       addingTask,
+      newTask,
       completingTask,
+      showTaskDetails,
+      selectedTask,
       isAdmin,
       addTask,
       completeTask,
-      getCompletedByName,
-      formatDate
+      openTaskDetails,
+      onTaskUpdated,
+      onTaskDeleted,
+      commonIcons,
+      otherIcons,
+      getCategoryIcon
     };
   }
 }
 </script>
 
 <style scoped>
-.tasks-container {
-  margin: 20px auto;
+.tasks {
   max-width: 800px;
+  margin: 0 auto;
+  padding: var(--spacing-medium);
 }
 
-.task-filters {
+.tasks-container {
+  margin: var(--spacing-large) 0;
+}
+
+.user-actions {
   display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
+  justify-content: center;
+  margin: var(--spacing-medium) 0;
 }
 
-.task-filters button {
-  padding: 8px 16px;
-  border: 1px solid #ddd;
-  background: white;
-  cursor: pointer;
-}
-
-.task-filters button.active {
-  background-color: #42b983;
-  color: white;
-  border-color: #42b983;
-}
-
-.admin-actions {
-  margin-bottom: 20px;
+.user-actions button {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-small);
 }
 
 .add-task-form {
-  background-color: #f5f5f5;
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
+  background-color: white;
+  border-radius: var(--border-radius-medium);
+  padding: var(--spacing-large);
+  margin-bottom: var(--spacing-large);
+  box-shadow: var(--shadow-small);
 }
 
-.task-list {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 15px;
-}
-
-.task-card {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 15px;
-}
-
-.task-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.points-badge {
-  background-color: #42b983;
-  color: white;
-  padding: 3px 8px;
-  border-radius: 12px;
-}
-
-.category-badge {
-  display: inline-block;
-  background-color: #f0f0f0;
-  color: #333;
-  padding: 3px 8px;
-  border-radius: 12px;
-  margin-top: 10px;
-}
-
-.task-footer {
-  margin-top: 15px;
-  border-top: 1px solid #eee;
-  padding-top: 15px;
-}
-
-.completed-info {
-  font-style: italic;
-  color: #666;
-}
-
-button {
-  padding: 8px 16px;
-  background-color: #42b983;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-button:disabled {
-  background-color: #cccccc;
+.add-task-form form {
+  text-align: left;
 }
 
 .form-group {
-  margin-bottom: 15px;
+  margin-bottom: var(--spacing-medium);
 }
 
-label {
+.form-group label {
   display: block;
-  margin-bottom: 5px;
-  font-weight: bold;
+  margin-bottom: var(--spacing-vsmall);
+  font-weight: var(--font-weight-semibold);
 }
 
-input, select, textarea {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+.task-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--spacing-medium);
+  margin-top: var(--spacing-large);
 }
 
-textarea {
-  height: 100px;
+.no-household {
+  margin-top: var(--spacing-vlarge);
+  text-align: center;
 }
 
-@media (min-width: 768px) {
-  .task-list {
-    grid-template-columns: repeat(2, 1fr);
-  }
+.btn {
+  display: inline-block;
+  margin-top: var(--spacing-medium);
+  background-color: var(--color-primary);
+  color: white;
+  padding: var(--spacing-small) var(--spacing-large);
+  border-radius: var(--border-radius-medium);
+  text-decoration: none;
+  font-weight: var(--font-weight-semibold);
+}
+
+.icon-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  gap: var(--spacing-small);
+  margin: var(--spacing-small) 0;
+}
+
+.icon-option {
+  position: relative;
+}
+
+.icon-option input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.icon-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-small);
+  border: 1px solid var(--color--gray-light);
+  border-radius: var(--border-radius-small);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.icon-button i {
+  font-size: 24px;
+  margin-bottom: var(--spacing-vsmall);
+  color: var(--color-secondary);
+}
+
+.icon-button span {
+  font-size: 10px;
+  color: var(--color-gray-dark);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.icon-button.active {
+  background-color: var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+
+.icon-button.active i,
+.icon-button.active span {
+  color: white;
+}
+
+.more-icons {
+  margin-top: var(--spacing-medium);
+}
+
+.more-icons summary {
+  color: var(--color-primary);
+  cursor: pointer;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--spacing-small);
+  user-select: none;
 }
 </style>
